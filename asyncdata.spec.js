@@ -621,7 +621,7 @@ describe("AsyncData", function() {
 
           expect(successCb).not.toHaveBeenCalled();
           expect(failureCb).toHaveBeenCalledWith('pwned');
-          expect(finalyCb).not.toHaveBeenCalled();
+          expect(finalyCb).toHaveBeenCalled();
         });
       });
 
