@@ -272,9 +272,9 @@
     self._failure = signalFromAny(failureSignals);
 
     // finally when
-    // 1. all sourceSignals succeed
-    // 2. 1 failureSignal fails
-    self._finally = signalFromAny([self._failure, self._success]);compoundSignalFromArray(finallySignals);//new CompoundSignal.apply(null, finallySignals);
+    // 1. all sourceSignals
+    // 2. at least 1 failureSignal
+    self._finally = signalFromAny([self._failure, self._success]);
     self._finally.memorize = true;
     self._finally.override = true;
 
