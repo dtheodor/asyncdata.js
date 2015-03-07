@@ -15,7 +15,7 @@
     define(['signals', 'CompoundSignal'], definition);
   }
   else {
-    this['asyncData'] = definition(signals.Signal, signals.CompoundSignal);
+    this['promiseStream'] = definition(signals.Signal, signals.CompoundSignal);
   }
 }(function(Signal, CompoundSignal) {
 
@@ -44,17 +44,17 @@
    *
    * @param loadFn a function that returns a promise. The resolution of the
    *    promise must return the loaded data.
-   * @return {AsyncDataSource}
+   * @return {PromiseStreamSource}
    *
    * Example:
    * <code>
-   asyncData(function(){
+   promiseStream(function(){
       return $http.get('api/data');
     })
-   .resolved(function(data){
+   .then(function(data){
       return transform(data);
     })
-   .resolved(function(data){
+   .then(function(data){
       console.log('got the transformed data', data)
     });
 
@@ -67,7 +67,7 @@
 
    Requested can be used for notifications when the data is (re)loaded
 
-   var data = asyncData(function(){
+   var data = promiseStream(function(){
       return $http.get('api/data');
     });
 
@@ -75,7 +75,7 @@
       console.log('loading data...')
     });
 
-   var transformedData = data.resolved(function(data){
+   var transformedData = data.then(function(data){
       return transform(data);
     });
 
@@ -83,7 +83,7 @@
       console.log('transforming data...')
     });
 
-   transformedData.resolved(function(data){
+   transformedData.then(function(data){
       console.log('got the transformed data', data)
     });
 
@@ -96,25 +96,25 @@
    Requested can also be chained, and returns the same async data object it
    operates on.
 
-   var data = asyncData(function(){
+   var data = promiseStream(function(){
       return $http.get('api/data');
     })
    .requested(function(progress){
       console.log('loading data...')
     })
-   .resolved(function(data){
+   .then(function(data){
       return transform(data);
     }).requested(function(){
       console.log('transforming data...')
     })
-   .resolved(function(data){
+   .then(function(data){
       console.log('got the transformed data', data)
     });
    * </code>
    *
    */
-  function asyncData(loadFn) {
-    return new AsyncDataSource(loadFn);
+  function promiseStream(promiseFactory) {
+    return new PromiseStreamSource(promiseFactory);
   }
 
   /**
@@ -122,10 +122,10 @@
    * everytime the data it depends on is reloaded.
    * @constructor
    */
-  function AsyncData() {
+  function PromiseStream() {
     var self = this;
     self.isLoading = false;
-    self._loadingStarted = new Signal();
+    self._requestStarted = new Signal();
     self._success = new Signal();
     self._success.memorize = true;
     self._failure = new Signal();
@@ -134,7 +134,7 @@
     self._finally.memorize = true;
 
     //TODO: what to do with self.isLoading with several intermixed started and finally calls?
-    self._loadingStarted.add(function(){
+    self._requestStarted.add(function(){
       self.isLoading = true;
     });
     self._finally.add(function(){
@@ -146,12 +146,12 @@
    * Register the success, failure, and finally callbacks
    * for each respective outcome.
    */
-  AsyncData.prototype.resolved = function (success, failure, finally_) {
+  PromiseStream.prototype.then = function (success, failure, finally_) {
 
     var self = this;
-    var child = new AsyncData();
-    self._loadingStarted.add(function(){
-      child._loadingStarted.dispatch();
+    var child = new PromiseStream();
+    self._requestStarted.add(function(){
+      child._requestStarted.dispatch();
     });
 
     self._success.add(function () {
@@ -171,52 +171,57 @@
     });
 
     self._finally.add(function () {
-      if (finally_) {
-        finally_();
-      }
-      child.isLoading = false;
       child._finally.dispatch();
     });
+
+    self.finally(finally_);
 
     return child;
   };
 
-
-  AsyncData.prototype.requested = function (callback) {
-    if (callback) {
-      this._loadingStarted.add(callback);
+  PromiseStream.prototype.finally = function(callback){
+    if (callback){
+      this._finally.add(callback);
     }
     return this;
   };
 
-  AsyncData.prototype.progressed = function (callback) {
+
+  PromiseStream.prototype.requested = function (callback) {
+    if (callback) {
+      this._requestStarted.add(callback);
+    }
+    return this;
+  };
+
+  PromiseStream.prototype.progressed = function (callback) {
     //TODO: integrate with promise.notify()
   };
 
 
   /**
-   * Like AsyncData, but is the original data source and has a `load()` method.
+   * Like PromiseStream, but is the original data source and has a `load()` method.
    *
    * @param loadFn a function that must return a promise
    * @constructor
    */
-  function AsyncDataSource(loadFn) {
-    AsyncData.call(this);
-    this._load = loadFn;
+  function PromiseStreamSource(promiseFactory) {
+    PromiseStream.call(this);
+    this._load = promiseFactory;
   }
 
-  AsyncDataSource.prototype = Object.create(AsyncData.prototype);
-  AsyncDataSource.prototype.constructor = AsyncDataSource;
+  PromiseStreamSource.prototype = Object.create(PromiseStream.prototype);
+  PromiseStreamSource.prototype.constructor = PromiseStreamSource;
 
-  AsyncDataSource.prototype.load = function () {
+  PromiseStreamSource.prototype.load = function () {
     // what about concurrent loads?
     var self = this;
-    this._loadingStarted.dispatch();
+    this._requestStarted.dispatch();
     this.lastRequestArguments = [].slice.call(arguments);
     var promise = self._load.apply(null, arguments);
     if (promise.then == null || promise['finally'] == null) {
       console.error(promise);
-      throw new Error('The callback on \'AsyncData\' must return a promise, ' +
+      throw new Error('The callback on \'PromiseStream\' must return a promise, ' +
       'it returned \'' + promise + '\' instead.')
     }
     promise.then(function (data) {
@@ -232,31 +237,31 @@
   };
 
   /**
-   * An AsyncData that receives multiple AsycnData's as parameters.
+   * An PromiseStream that receives multiple AsycnData's as parameters.
    *
-   * Its success and finally are CompoundSignals of the passed AsyncData's
+   * Its success and finally are CompoundSignals of the passed PromiseStream's
    * success and finally.
    *
    * Its requested and failure are signals that will be trigered if any of
-   * the passed AsyncData's requested or failure are triggered.
+   * the passed PromiseStream's requested or failure are triggered.
    * @constructor
    */
-  function CombinedAsyncData(asyncDataArray) {
+  function CombinedPromiseStream(promiseStreamArray) {
     var self = this;
     var successSignals = [];
     var failureSignals = [];
     var finallySignals = [];
     var loadingStartedSignals = [];
-    for (var i = 0; i < asyncDataArray.length; i++){
-      successSignals.push(asyncDataArray[i]._success);
-      failureSignals.push(asyncDataArray[i]._failure);
-      finallySignals.push(asyncDataArray[i]._finally);
-      loadingStartedSignals.push(asyncDataArray[i]._loadingStarted);
+    for (var i = 0; i < promiseStreamArray.length; i++){
+      successSignals.push(promiseStreamArray[i]._success);
+      failureSignals.push(promiseStreamArray[i]._failure);
+      finallySignals.push(promiseStreamArray[i]._finally);
+      loadingStartedSignals.push(promiseStreamArray[i]._requestStarted);
     }
 
     self.isLoading = false;
     // loadingStarted when at least one loadingStartedSignals is triggered
-    self._loadingStarted = signalFromAny(loadingStartedSignals);//new Signal();
+    self._requestStarted = signalFromAny(loadingStartedSignals);//new Signal();
 
     // success when all sourceSignals succeed
     self._success = compoundSignalFromArray(successSignals);//new CompoundSignal.apply(null, successSignals);
@@ -273,7 +278,7 @@
     self._finally.memorize = true;
     self._finally.override = true;
 
-    self._loadingStarted.add(function(){
+    self._requestStarted.add(function(){
       self.isLoading = true;
     });
     self._finally.add(function(){
@@ -281,8 +286,8 @@
     });
   }
 
-  CombinedAsyncData.prototype = Object.create(AsyncData.prototype);
-  CombinedAsyncData.prototype.constructor = CombinedAsyncData;
+  CombinedPromiseStream.prototype = Object.create(PromiseStream.prototype);
+  CombinedPromiseStream.prototype.constructor = CombinedPromiseStream;
 
 
   var compoundSignalFromArray = (function(){
@@ -312,7 +317,7 @@
   }
 
   /**
-   * Combine multiple asyncData into a single one.
+   * Combine multiple promiseStream into a single one.
    *
    * The semantics are that for the first time for `resolved` to be triggered,
    * all individual resolved's should have been triggered. From then on, each
@@ -321,10 +326,10 @@
    * For `requested`, every individual `requested` will trigger the combined
    * one.
    */
-  asyncData.all = function(){
-    return new CombinedAsyncData(arguments);
+  promiseStream.all = function(){
+    return new CombinedPromiseStream(arguments);
   };
 
-  return asyncData;
+  return promiseStream;
 
 }));

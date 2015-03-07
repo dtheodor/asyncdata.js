@@ -1,4 +1,4 @@
-describe("AsyncData", function() {
+describe("PromiseStream", function() {
   'use strict';
   var deferred;
   var data;
@@ -7,17 +7,17 @@ describe("AsyncData", function() {
     mockPromises.install(Q.makePromise);
     mockPromises.reset();
     deferred = Q.defer();
-    data = asyncData(function(){
+    data = promiseStream(function(){
       return deferred.promise;
     });
   });
 
   it("should call the load function with the passed arguments", function(){
 
-    var loadFn = jasmine.createSpy('loadFn').and.returnValue(deferred.promise);
-    var data = asyncData(loadFn);
+    var promiseFactory = jasmine.createSpy('promiseFactory').and.returnValue(deferred.promise);
+    var data = promiseStream(promiseFactory);
     data.load(1, 2, 'la');
-    expect(loadFn).toHaveBeenCalledWith(1, 2, 'la');
+    expect(promiseFactory).toHaveBeenCalledWith(1, 2, 'la');
     expect(data.lastRequestArguments).toEqual([1, 2, 'la']);
   });
 
@@ -33,7 +33,7 @@ describe("AsyncData", function() {
       failureCb = jasmine.createSpy('failureCb');
       finalyCb = jasmine.createSpy('finalyCb');
 
-      data.resolved(successCb, failureCb, finalyCb);
+      data.then(successCb, failureCb, finalyCb);
       loadPromise = data.load();
 
       expect(successCb).not.toHaveBeenCalled();
@@ -84,8 +84,8 @@ describe("AsyncData", function() {
 
       beforeEach(function(){
         data
-        .resolved()
-        .resolved(successCb, failureCb, finalyCb);
+        .then()
+        .then(successCb, failureCb, finalyCb);
         loadPromise = data.load();
       });
 
@@ -123,13 +123,13 @@ describe("AsyncData", function() {
 
       beforeEach(function(){
         data
-        .resolved(function(){
+        .then(function(){
           return successData;
         }, function (){
           return failureData;
         }, function(){
         })
-        .resolved(successCb, failureCb, finalyCb);
+        .then(successCb, failureCb, finalyCb);
         loadPromise = data.load();
 
       });
@@ -192,18 +192,18 @@ describe("AsyncData", function() {
 
         beforeEach(function () {
           data
-          .resolved(function () {
+          .then(function () {
             return successData;
           }, function () {
             return failureData;
           }, function () {
           })
-          .resolved(function(){
+          .then(function(){
             return secondSuccessData;
           }, function(){
             return secondFailureData;
           })
-          .resolved(successCb, failureCb, finalyCb);
+          .then(successCb, failureCb, finalyCb);
           loadPromise = data.load();
 
         });
@@ -244,13 +244,13 @@ describe("AsyncData", function() {
 
         beforeEach(function () {
           data
-          .resolved()
-          .resolved(function(){
+          .then()
+          .then(function(){
             return secondSuccessData;
           }, function(){
             return secondFailureData;
           })
-          .resolved(successCb, failureCb, finalyCb);
+          .then(successCb, failureCb, finalyCb);
           loadPromise = data.load();
 
         });
@@ -294,14 +294,14 @@ describe("AsyncData", function() {
 
       beforeEach(function () {
         data
-        .resolved(function () {
+        .then(function () {
           return successData;
         }, function () {
           return failureData;
         }, function () {
         })
-        .resolved()
-        .resolved(successCb, failureCb, finalyCb);
+        .then()
+        .then(successCb, failureCb, finalyCb);
         loadPromise = data.load();
 
       });
@@ -340,9 +340,9 @@ describe("AsyncData", function() {
 
       beforeEach(function () {
         data
-        .resolved()
-        .resolved()
-        .resolved(successCb, failureCb, finalyCb);
+        .then()
+        .then()
+        .then(successCb, failureCb, finalyCb);
         loadPromise = data.load();
 
       });
@@ -380,7 +380,7 @@ describe("AsyncData", function() {
 
   it('\'load\' should throw Error when no promise is returned', function(){
 
-    var data = asyncData(2);
+    var data = promiseStream(2);
 
     expect(data.load).toThrow();
 
@@ -400,9 +400,9 @@ describe("AsyncData", function() {
 
     it('should be triggered for all chained results', function(){
       data.requested(loadingCb1);
-      var data2 = data.resolved();
+      var data2 = data.then();
       data2.requested(loadingCb2);
-      var data3 = data2.resolved();
+      var data3 = data2.then();
       data3.requested(loadingCb3);
       data.load();
 
@@ -417,9 +417,9 @@ describe("AsyncData", function() {
 
     it('should be possible to chain', function(){
       data.requested(loadingCb1)
-      .resolved()
+      .then()
       .requested(loadingCb2)
-      .resolved()
+      .then()
       .requested(loadingCb3);
       data.load();
 
@@ -428,12 +428,12 @@ describe("AsyncData", function() {
       expect(loadingCb3).toHaveBeenCalled();
     });
 
-    it('should propagate to combined AsyncData', function(){
+    it('should propagate to combined PromiseStream', function(){
 
 
-      var combined = asyncData.all(data);
+      var combined = promiseStream.all(data);
       combined.requested(loadingCb1);
-      var last = combined.resolved().requested(loadingCb2);
+      var last = combined.then().requested(loadingCb2);
 
       data.load();
       expect(combined.isLoading).toEqual(true);
@@ -468,7 +468,7 @@ describe("AsyncData", function() {
     it('for one chained result', function(){
 
       var result;
-      data.resolved(function(data){
+      data.then(function(data){
         result = data;
       });
       expect(result).toEqual(successData);
@@ -477,8 +477,8 @@ describe("AsyncData", function() {
     it('for two chained results', function(){
 
       var result;
-      var data2 = data.resolved();
-      data2.resolved(function(data){
+      var data2 = data.then();
+      data2.then(function(data){
         result = data;
       });
 
@@ -488,10 +488,10 @@ describe("AsyncData", function() {
     it('for two chained results with intermediate result', function(){
 
       var result;
-      var data2 = data.resolved(function(){
+      var data2 = data.then(function(){
         return 2;
       });
-      data2.resolved(function(data){
+      data2.then(function(data){
         result = data;
       });
 
@@ -505,7 +505,7 @@ describe("AsyncData", function() {
     var successCb1 = jasmine.createSpy('successCb1');
     var successCb2 = jasmine.createSpy('successCb2');
 
-    data.resolved(successCb1).resolved(successCb2);
+    data.then(successCb1).then(successCb2);
 
     var loadPromise = data.load();
     deferred.resolve(2);
@@ -531,23 +531,23 @@ describe("AsyncData", function() {
 
     beforeEach(function() {
       deferred2 = Q.defer();
-      data2 = asyncData(function(){
+      data2 = promiseStream(function(){
         return deferred2.promise;
       });
     });
 
-    it('should return an AsyncData', function(){
-      var combined = asyncData.all(data, data2)
+    it('should return an PromiseStream', function(){
+      var combined = promiseStream.all(data, data2)
       expect(combined.requested).toBeDefined();
-      expect(combined.resolved).toBeDefined();
+      expect(combined.then).toBeDefined();
     });
 
-    describe('combined AsyncData', function(){
+    describe('combined PromiseStream', function(){
 
       var combined, successCb, failureCb, finalyCb, requestCb;
 
       beforeEach(function() {
-        combined = asyncData.all(data, data2);
+        combined = promiseStream.all(data, data2);
 
         successCb = jasmine.createSpy('successCb');
         failureCb = jasmine.createSpy('failureCb');
@@ -558,7 +558,7 @@ describe("AsyncData", function() {
       describe('resolved callback', function(){
 
         beforeEach(function(){
-          combined.resolved(successCb, failureCb, finalyCb);
+          combined.then(successCb, failureCb, finalyCb);
 
           data.load();
           data2.load();
@@ -643,13 +643,13 @@ describe("AsyncData", function() {
 
       describe('with chained resolved', function(){
 
-        it('should propagate requested to the chained AsyncData', function(){
+        it('should propagate requested to the chained PromiseStream', function(){
           var requestCb2 = jasmine.createSpy('requestCb2');
           var result1 = combined.
-            resolved().
+            then().
             requested(requestCb);
           var result2 = result1.
-            resolved(function(){
+            then(function(){
               return 6;
             }).
             requested(requestCb2);
@@ -664,8 +664,8 @@ describe("AsyncData", function() {
 
         it('should propagate arguments without intermediate results', function(){
 
-          combined.resolved()
-            .resolved(successCb, failureCb, finalyCb);
+          combined.then()
+            .then(successCb, failureCb, finalyCb);
 
           deferred.resolve([5, 6]);
           deferred2.resolve('lala');
@@ -684,10 +684,10 @@ describe("AsyncData", function() {
         it('should propagate success arguments with intermediate results', function(){
 
           combined
-            .resolved(function(){
+            .then(function(){
               return 5;
             })
-            .resolved(successCb, failureCb, finalyCb);
+            .then(successCb, failureCb, finalyCb);
 
           deferred.resolve([5, 6]);
           deferred2.resolve('lala');
@@ -706,10 +706,10 @@ describe("AsyncData", function() {
         it('should propagate rejection arguments with intermediate results', function(){
 
           combined
-            .resolved(null, function(){
+            .then(null, function(){
               return 'failed';
             })
-            .resolved(successCb, failureCb, finalyCb);
+            .then(successCb, failureCb, finalyCb);
 
           deferred.resolve([5, 6]);
           deferred2.reject('lala');
@@ -737,7 +737,7 @@ describe("AsyncData", function() {
         mockPromises.executeForPromise(deferred.promise);
         mockPromises.executeForPromise(deferred2.promise);
 
-        combined.resolved(successCb, failureCb, finalyCb);
+        combined.then(successCb, failureCb, finalyCb);
 
         expect(successCb).toHaveBeenCalledWith([[5, 6]], ['lala']);
         expect(failureCb).not.toHaveBeenCalled();
@@ -757,10 +757,10 @@ describe("AsyncData", function() {
     var successCb3 = jasmine.createSpy('successCb3');
     var successCb4 = jasmine.createSpy('successCb4');
 
-    data.resolved(successCb1);
-    data.resolved(successCb2);
-    data.resolved(successCb3);
-    data.resolved(successCb4);
+    data.then(successCb1);
+    data.then(successCb2);
+    data.then(successCb3);
+    data.then(successCb4);
 
     data.load();
     deferred.resolve([1,2]);
